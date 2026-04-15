@@ -1,0 +1,127 @@
+from time import *
+#import tkinter as tk
+import os
+from picamera2 import Picamera2, Preview
+from libcamera import Transform
+import numpy as numpy
+from datetime import datetime
+###EXPERIMENAL:
+#import cv2
+#colour = (255,0,0,255)
+#origin = (0,30)
+#font = cv2.FONT_HERSHEY_PLAIN
+#scale = 2
+#thickness = 2
+
+###for recording:
+from picamera2.encoders import H264Encoder
+###
+###GPIO:
+import RPi.GPIO as GPIO
+
+GPIO.setmode(GPIO.BCM)
+GPIO.cleanup()
+GPIO.setmode(GPIO.BCM)
+
+led = 14
+buttonPhoto = 15
+buttonVideo = 18
+GPIO.setup(buttonPhoto, GPIO.IN, pull_up_down = GPIO.PUD_UP)
+GPIO.setup(buttonVideo, GPIO.IN, pull_up_down = GPIO.PUD_UP)
+
+GPIO.setup(led, GPIO.OUT, initial = 0)
+###
+
+
+WIDTH = 640
+HEIGHT = 480
+
+CAM_WIDTH = 2048
+CAM_HEIGHT = 1536
+
+#for terminal session:
+if os.environ.get('DISPLAY','') == '':
+	print("no display found, setting to :0.0")
+	os.environ.__setitem__('DISPLAY', ':0.0')
+
+	
+#will try to remove window to run in console:
+"""
+window = tk.Tk()
+window.title("Test")
+frame1 = tk.Frame(master = window, bg = "black")
+frame1.pack(fill = tk.BOTH, expand=True)
+label1 = tk.Label(text="Hello welcome to my camera!", master =frame1, foreground = "white", background = "black")
+label1.pack()
+"""
+
+current = datetime.now()
+current = current.strftime("%d-%b-%Y_%I:%M:%S_%p")
+
+camera = Picamera2()
+
+cam_configure = camera.create_preview_configuration(
+	main={"size": (CAM_WIDTH, CAM_HEIGHT)},
+	lores={"size": (WIDTH, HEIGHT)})
+camera.configure(cam_configure)
+
+camera.start_preview(Preview.QTGL, x=0, y=0, width=WIDTH, height=HEIGHT)
+encoder = H264Encoder(bitrate=10000000)
+
+camera.start()
+#remove overlay for running in console!
+
+
+overlay = numpy.zeros((300, 400, 4), dtype=numpy.uint8) #height, width, pixels (RGBA) using 4:3 aspect ratio
+
+overlay[100, :] = (0, 0, 0, 100) # assign certain width & height to an RGBA value
+overlay[200, :] = (0, 0, 0, 100) # assign certain width & height to an RGBA value
+overlay[:, 133] = (0, 0, 0, 100) # assign certain width & height to an RGBA value
+overlay[:, 266] = (0, 0, 0, 100) # assign certain width & height to an RGBA value
+###
+"""text = "Recording"
+cv2.putText(overlay, text, origin, font, scale, colour, thickness)
+"""
+###
+camera.set_overlay(overlay)
+
+#window.mainloop()
+
+
+exitFlag = 0
+while(1):
+	buttonStatePhoto = GPIO.input(buttonPhoto)
+	buttonStateVideo = GPIO.input(buttonVideo)
+	
+	if(buttonStatePhoto == 0): #button is pressed; active low
+		GPIO.output(led, 1)
+		sleep(0.8)
+		GPIO.output(led, 0)
+		sleep(0.1)
+		GPIO.output(led, 1)
+		sleep(0.1)
+		current = datetime.now()
+		current = current.strftime("%d-%b-%Y_%I-%M-%S_%p")
+		camera.capture_file("photos/%s.jpg" % current)
+		GPIO.output(led, 0)
+	
+	elif(buttonStateVideo == 0):
+		GPIO.output(led, 1)
+		#camera.start_recording(encoder, "%s.h264" % current)
+		while(buttonStateVideo == 0):
+			buttonStateVideo = GPIO.input(buttonVideo)
+			buttonStatePhoto = GPIO.input(buttonPhoto)
+			if (buttonStateVideo == 0 and buttonStatePhoto == 0):
+				GPIO.cleanup()
+				print("Exiting...")
+				exitFlag = 1
+				break
+			elif (buttonStateVideo == 1):
+				GPIO.output(led, 0)
+			continue
+			
+		#picam2.stop_recording()
+			
+		
+	if(exitFlag == 1):
+		break
